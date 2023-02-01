@@ -1,6 +1,7 @@
 import { Context, ServerlessCallback, ServerlessFunctionSignature } from "@twilio-labs/serverless-runtime-types/types";
 import '@twilio-labs/serverless-runtime-types';
 import Airtable from "airtable/lib/airtable"
+import { Collaborator, Attachment } from "airtable";
 
 
 export const handler: ServerlessFunctionSignature  = async (context: Context, event: any, callback: ServerlessCallback) => {
@@ -14,6 +15,7 @@ export const handler: ServerlessFunctionSignature  = async (context: Context, ev
 
       if (message === 'in' || message === 'out') {
         const id = await getCurrentPunch(base, phoneNumber)
+        const user = await getCurrentUser(base, phoneNumber)
 
         if (id && message === 'out') {
             const result = await updateCurrentPunch(base, id)
@@ -21,7 +23,7 @@ export const handler: ServerlessFunctionSignature  = async (context: Context, ev
                 twiml.message("succesfully punched out");
             }
         } else if (!id && message === 'in') {
-            const result = await punchIn(base, phoneNumber)
+            const result = await punchIn(base, phoneNumber, user)
             if (result) {
                 twiml.message("succesfully punched in");
             }
@@ -39,12 +41,13 @@ export const handler: ServerlessFunctionSignature  = async (context: Context, ev
     }
     
   };
-  async function punchIn(base: Airtable.Base, phoneNumber: string): Promise<string> {
+  async function punchIn(base: Airtable.Base, phoneNumber: string, user: string): Promise<string> {
     return base('Timesheet').create([
         {
           "fields": {
             "Phone Number": phoneNumber,
-            "Punch In": "in"
+            "Punch In": "in",
+            "User": user
           }
         }
     ]).then(record =>{
@@ -77,6 +80,28 @@ export const handler: ServerlessFunctionSignature  = async (context: Context, ev
     })
 }
 
+async function getCurrentUser(base: Airtable.Base, phoneNumber: string): Promise<string> {
+    let found = false
+    let id = ''
+
+    return base('Users').select({
+        view: 'Grid view',
+        filterByFormula: `({Phone Number} = '${phoneNumber}')`
+    }).firstPage().then(records => {
+        for (const record of records) {
+            found = true
+            id = ensureString(record.get("Employee"))
+        }
+        return id
+    }).catch(err => {
+        throw Error("unable to get record")
+    }).finally(() => {
+        if (!found) {
+            return ''
+        }
+    })
+}
+
 async function updateCurrentPunch(base: Airtable.Base, id: string): Promise<string> {
     return base('Timesheet').update(id, {
         "Punch Out": "out"
@@ -85,4 +110,12 @@ async function updateCurrentPunch(base: Airtable.Base, id: string): Promise<stri
     }).catch(err => {
         throw Error("unable to update record")
     })
+}
+
+function ensureString(data: string | number | boolean | Collaborator | readonly Collaborator[] | readonly string[] | readonly Attachment[] | undefined): string {
+    if (typeof data == 'string') {
+        return data;
+    } else {
+        return ''
+    }
 }

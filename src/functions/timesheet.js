@@ -43,7 +43,7 @@ exports.handler = void 0;
 require("@twilio-labs/serverless-runtime-types");
 var airtable_1 = __importDefault(require("airtable/lib/airtable"));
 var handler = function (context, event, callback) { return __awaiter(void 0, void 0, void 0, function () {
-    var base, message, phoneNumber, twiml, id, result, result, error_1;
+    var base, message, phoneNumber, twiml, id, user, result, result, error_1;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
@@ -53,52 +53,56 @@ var handler = function (context, event, callback) { return __awaiter(void 0, voi
                 twiml = new Twilio.twiml.MessagingResponse();
                 _a.label = 1;
             case 1:
-                _a.trys.push([1, 10, , 11]);
-                if (!(message === 'in' || message === 'out')) return [3 /*break*/, 8];
+                _a.trys.push([1, 11, , 12]);
+                if (!(message === 'in' || message === 'out')) return [3 /*break*/, 9];
                 return [4 /*yield*/, getCurrentPunch(base, phoneNumber)];
             case 2:
                 id = _a.sent();
-                if (!(id && message === 'out')) return [3 /*break*/, 4];
-                return [4 /*yield*/, updateCurrentPunch(base, id)];
+                return [4 /*yield*/, getCurrentUser(base, phoneNumber)];
             case 3:
+                user = _a.sent();
+                if (!(id && message === 'out')) return [3 /*break*/, 5];
+                return [4 /*yield*/, updateCurrentPunch(base, id)];
+            case 4:
                 result = _a.sent();
                 if (result) {
                     twiml.message("succesfully punched out");
                 }
-                return [3 /*break*/, 7];
-            case 4:
-                if (!(!id && message === 'in')) return [3 /*break*/, 6];
-                return [4 /*yield*/, punchIn(base, phoneNumber)];
+                return [3 /*break*/, 8];
             case 5:
+                if (!(!id && message === 'in')) return [3 /*break*/, 7];
+                return [4 /*yield*/, punchIn(base, phoneNumber, user)];
+            case 6:
                 result = _a.sent();
                 if (result) {
                     twiml.message("succesfully punched in");
                 }
-                return [3 /*break*/, 7];
-            case 6:
+                return [3 /*break*/, 8];
+            case 7:
                 twiml.message("You are already punched in!");
-                _a.label = 7;
-            case 7: return [3 /*break*/, 9];
-            case 8:
+                _a.label = 8;
+            case 8: return [3 /*break*/, 10];
+            case 9:
                 twiml.message("not sure what you wanted to do");
-                _a.label = 9;
-            case 9: return [2 /*return*/, callback(null, twiml)];
-            case 10:
+                _a.label = 10;
+            case 10: return [2 /*return*/, callback(null, twiml)];
+            case 11:
                 error_1 = _a.sent();
                 return [2 /*return*/, callback(error_1)];
-            case 11: return [2 /*return*/];
+            case 12: return [2 /*return*/];
         }
     });
 }); };
 exports.handler = handler;
-function punchIn(base, phoneNumber) {
+function punchIn(base, phoneNumber, user) {
     return __awaiter(this, void 0, void 0, function () {
         return __generator(this, function (_a) {
             return [2 /*return*/, base('Timesheet').create([
                     {
                         "fields": {
                             "Phone Number": phoneNumber,
-                            "Punch In": "in"
+                            "Punch In": "in",
+                            "User": user
                         }
                     }
                 ]).then(function (record) {
@@ -135,6 +139,32 @@ function getCurrentPunch(base, phoneNumber) {
         });
     });
 }
+function getCurrentUser(base, phoneNumber) {
+    return __awaiter(this, void 0, void 0, function () {
+        var found, id;
+        return __generator(this, function (_a) {
+            found = false;
+            id = '';
+            return [2 /*return*/, base('Users').select({
+                    view: 'Grid view',
+                    filterByFormula: "({Phone Number} = '".concat(phoneNumber, "')")
+                }).firstPage().then(function (records) {
+                    for (var _i = 0, records_2 = records; _i < records_2.length; _i++) {
+                        var record = records_2[_i];
+                        found = true;
+                        id = ensureString(record.get("Employee"));
+                    }
+                    return id;
+                }).catch(function (err) {
+                    throw Error("unable to get record");
+                }).finally(function () {
+                    if (!found) {
+                        return '';
+                    }
+                })];
+        });
+    });
+}
 function updateCurrentPunch(base, id) {
     return __awaiter(this, void 0, void 0, function () {
         return __generator(this, function (_a) {
@@ -147,5 +177,13 @@ function updateCurrentPunch(base, id) {
                 })];
         });
     });
+}
+function ensureString(data) {
+    if (typeof data == 'string') {
+        return data;
+    }
+    else {
+        return '';
+    }
 }
 //# sourceMappingURL=timesheet.js.map
