@@ -43,7 +43,7 @@ exports.handler = void 0;
 require("@twilio-labs/serverless-runtime-types");
 var airtable_1 = __importDefault(require("airtable/lib/airtable"));
 var handler = function (context, event, callback) { return __awaiter(void 0, void 0, void 0, function () {
-    var base, message, phoneNumber, twiml, id, user, result, result, error_1;
+    var base, message, phoneNumber, twiml, id, user, result, result, hours, error_1;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
@@ -53,8 +53,8 @@ var handler = function (context, event, callback) { return __awaiter(void 0, voi
                 twiml = new Twilio.twiml.MessagingResponse();
                 _a.label = 1;
             case 1:
-                _a.trys.push([1, 11, , 12]);
-                if (!(message === 'in' || message === 'out')) return [3 /*break*/, 9];
+                _a.trys.push([1, 13, , 14]);
+                if (!(message === 'in' || message === 'out' || message === 'hours')) return [3 /*break*/, 11];
                 return [4 /*yield*/, getCurrentPunch(base, phoneNumber)];
             case 2:
                 id = _a.sent();
@@ -68,7 +68,7 @@ var handler = function (context, event, callback) { return __awaiter(void 0, voi
                 if (result) {
                     twiml.message("succesfully punched out");
                 }
-                return [3 /*break*/, 8];
+                return [3 /*break*/, 10];
             case 5:
                 if (!(!id && message === 'in')) return [3 /*break*/, 7];
                 return [4 /*yield*/, punchIn(base, phoneNumber, user)];
@@ -77,19 +77,26 @@ var handler = function (context, event, callback) { return __awaiter(void 0, voi
                 if (result) {
                     twiml.message("succesfully punched in");
                 }
-                return [3 /*break*/, 8];
+                return [3 /*break*/, 10];
             case 7:
-                twiml.message("You are already punched in!");
-                _a.label = 8;
-            case 8: return [3 /*break*/, 10];
+                if (!(message === 'hours')) return [3 /*break*/, 9];
+                return [4 /*yield*/, getCurrentHours(base, phoneNumber)];
+            case 8:
+                hours = _a.sent();
+                twiml.message("Last 24 Hours: ".concat(hours.last24Hours.toFixed(2), "\nLast week: ").concat(hours.weekHours.toFixed(2), "\nPay Cycle: ").concat(hours.payCycleHours.toFixed(2)));
+                return [3 /*break*/, 10];
             case 9:
-                twiml.message("not sure what you wanted to do");
+                twiml.message("You are already punched in!");
                 _a.label = 10;
-            case 10: return [2 /*return*/, callback(null, twiml)];
+            case 10: return [3 /*break*/, 12];
             case 11:
+                twiml.message("not sure what you wanted to do");
+                _a.label = 12;
+            case 12: return [2 /*return*/, callback(null, twiml)];
+            case 13:
                 error_1 = _a.sent();
                 return [2 /*return*/, callback(error_1)];
-            case 12: return [2 /*return*/];
+            case 14: return [2 /*return*/];
         }
     });
 }); };
@@ -139,6 +146,45 @@ function getCurrentPunch(base, phoneNumber) {
         });
     });
 }
+function getCurrentHours(base, phoneNumber) {
+    return __awaiter(this, void 0, void 0, function () {
+        var found;
+        return __generator(this, function (_a) {
+            found = false;
+            return [2 /*return*/, base('Timesheet').select({
+                    view: 'Grid view',
+                    filterByFormula: "AND(({Phone Number} = '".concat(phoneNumber, "'),({Current Pay Cycle} = 1))")
+                }).firstPage().then(function (records) {
+                    var hours = { last24Hours: 0, weekHours: 0, payCycleHours: 0 };
+                    for (var _i = 0, records_2 = records; _i < records_2.length; _i++) {
+                        var record = records_2[_i];
+                        found = true;
+                        var dayNum = ensureNumber(record.get("Days Since Punched"));
+                        var hoursWorked = ensureNumber(record.get("Time Worked"));
+                        if (dayNum === 0) {
+                            hours.last24Hours += hoursWorked;
+                            hours.payCycleHours += hoursWorked;
+                            hours.weekHours += hoursWorked;
+                        }
+                        if (dayNum <= 7 && dayNum > 0) {
+                            hours.payCycleHours += hoursWorked;
+                            hours.weekHours += hoursWorked;
+                        }
+                        if (dayNum > 7) {
+                            hours.payCycleHours += hoursWorked;
+                        }
+                    }
+                    return hours;
+                }).catch(function (err) {
+                    throw Error("unable to get record");
+                }).finally(function () {
+                    if (!found) {
+                        return { last24Hours: 0, weekHours: 0, payCycleHours: 0 };
+                    }
+                })];
+        });
+    });
+}
 function getCurrentUser(base, phoneNumber) {
     return __awaiter(this, void 0, void 0, function () {
         var found, id;
@@ -149,8 +195,8 @@ function getCurrentUser(base, phoneNumber) {
                     view: 'Grid view',
                     filterByFormula: "({Phone Number} = '".concat(phoneNumber, "')")
                 }).firstPage().then(function (records) {
-                    for (var _i = 0, records_2 = records; _i < records_2.length; _i++) {
-                        var record = records_2[_i];
+                    for (var _i = 0, records_3 = records; _i < records_3.length; _i++) {
+                        var record = records_3[_i];
                         found = true;
                         id = ensureString(record.get("Employee"));
                     }
@@ -184,6 +230,14 @@ function ensureString(data) {
     }
     else {
         return '';
+    }
+}
+function ensureNumber(data) {
+    if (typeof data == 'number') {
+        return data;
+    }
+    else {
+        return -1;
     }
 }
 //# sourceMappingURL=timesheet.js.map

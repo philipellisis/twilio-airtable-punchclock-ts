@@ -13,7 +13,7 @@ export const handler: ServerlessFunctionSignature  = async (context: Context, ev
     const twiml = new Twilio.twiml.MessagingResponse();
     try {
 
-      if (message === 'in' || message === 'out') {
+      if (message === 'in' || message === 'out' || message === 'hours') {
         const id = await getCurrentPunch(base, phoneNumber)
         const user = await getCurrentUser(base, phoneNumber)
 
@@ -27,6 +27,11 @@ export const handler: ServerlessFunctionSignature  = async (context: Context, ev
             if (result) {
                 twiml.message("succesfully punched in");
             }
+        } else if (message === 'hours') {
+            const hours = await getCurrentHours(base, phoneNumber)
+            twiml.message(`Last 24 Hours: ${hours.last24Hours.toFixed(2)}
+Last week: ${hours.weekHours.toFixed(2)}
+Pay Cycle: ${hours.payCycleHours.toFixed(2)}`)
         } else {
             twiml.message("You are already punched in!");
         }
@@ -80,6 +85,47 @@ export const handler: ServerlessFunctionSignature  = async (context: Context, ev
     })
 }
 
+interface hours {
+    last24Hours: number
+    weekHours: number
+    payCycleHours: number
+}
+
+async function getCurrentHours(base: Airtable.Base, phoneNumber: string): Promise<hours> {
+    let found = false
+
+    return base('Timesheet').select({
+        view: 'Grid view',
+        filterByFormula: `AND(({Phone Number} = '${phoneNumber}'),({Current Pay Cycle} = 1))`
+    }).firstPage().then(records => {
+        let hours: hours = {last24Hours: 0, weekHours: 0, payCycleHours: 0}
+        for (const record of records) {
+            found = true
+            const dayNum: number = ensureNumber(record.get("Days Since Punched"))
+            const hoursWorked: number = ensureNumber(record.get("Time Worked"))
+            if(dayNum === 0) {
+                hours.last24Hours += hoursWorked
+                hours.payCycleHours += hoursWorked
+                hours.weekHours += hoursWorked
+            }
+            if(dayNum <= 7 && dayNum > 0) {
+                hours.payCycleHours += hoursWorked
+                hours.weekHours += hoursWorked
+            }
+            if(dayNum > 7) {
+                hours.payCycleHours += hoursWorked
+            }
+        }
+        return hours
+    }).catch(err => {
+        throw Error("unable to get record")
+    }).finally(() => {
+        if (!found) {
+            return {last24Hours: 0, weekHours: 0, payCycleHours: 0}
+        }
+    })
+}
+
 async function getCurrentUser(base: Airtable.Base, phoneNumber: string): Promise<string> {
     let found = false
     let id = ''
@@ -117,5 +163,13 @@ function ensureString(data: string | number | boolean | Collaborator | readonly 
         return data;
     } else {
         return ''
+    }
+}
+
+function ensureNumber(data: string | number | boolean | Collaborator | readonly Collaborator[] | readonly string[] | readonly Attachment[] | undefined): number {
+    if (typeof data == 'number') {
+        return data;
+    } else {
+        return -1
     }
 }
