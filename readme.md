@@ -3,9 +3,9 @@ This is a simple time management application that works with Twilio and Airtable
 To deploy -- create an env file with the following keys:
 
 ```yaml
-ACCOUNT_SID=ACca7affeebb46fb0dbf212a1b608fc1d3
-AUTH_TOKEN=8ef638f693d97348686d7e374cabd123
-API_KEY=patByQcKcttVPEGKO.5345ad2b09084c9a0b810467ce16664a6be3a7d2167a1f2f8cd0e14cc71193c8
+ACCOUNT_SID=your twillio account sid
+AUTH_TOKEN=your twillio auth token
+API_KEY=Your airtable API Key
 ```
 
 and run the following command:
