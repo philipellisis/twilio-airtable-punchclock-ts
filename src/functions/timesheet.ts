@@ -8,32 +8,63 @@ export const handler: ServerlessFunctionSignature  = async (context: Context, ev
     var base = new Airtable({apiKey: process.env.API_KEY}).base('appIYujosS9RbtTtl');
     // Create a new messaging response object
     
-    const message = event.Body.toLowerCase();
+    const message: string[] = event.Body.toLowerCase().split(' ');
     const phoneNumber = event.From || event.phoneNumber || '+14405273672';
     const twiml = new Twilio.twiml.MessagingResponse();
     try {
 
-      if (message === 'in' || message === 'out' || message === 'hours') {
+      if (message[0] === 'in' || message[0] === 'out' || message[0] === 'hours') {
         const id = await getCurrentPunch(base, phoneNumber)
         const user = await getCurrentUser(base, phoneNumber)
 
-        if (id && message === 'out') {
+        if (id && message[0] === 'out') {
             const result = await updateCurrentPunch(base, id)
-            if (result) {
+            const workid = await getCurrentWorkItem(base, phoneNumber)
+            let deletedWork = true
+            if (workid) {
+                deletedWork = await deleteWork(base, workid)
+            }
+            if (result && deletedWork) {
                 twiml.message("succesfully punched out");
+            } else {
+                twiml.message("problem while punching out");
             }
-        } else if (!id && message === 'in') {
+        } else if (!id && message[0] === 'in') {
             const result = await punchIn(base, phoneNumber, user)
-            if (result) {
+            const result2 = await addWorkItem(base, phoneNumber, user)
+            if (result && result2) {
                 twiml.message("succesfully punched in");
+            } else {
+                twiml.message("error punching you in");
             }
-        } else if (message === 'hours') {
+        } else if (message[0] === 'hours') {
             const hours = await getCurrentHours(base, phoneNumber)
             twiml.message(`Last 24 Hours: ${hours.last24Hours.toFixed(2)}
 Last week: ${hours.weekHours.toFixed(2)}
 Pay Cycle: ${hours.payCycleHours.toFixed(2)}`)
         } else {
-            twiml.message("You are already punched in!");
+            if (message[0] === 'in') {
+                twiml.message("You are already punched in!");
+            } else if (message[0] === 'out') {
+                twiml.message("You are already punched out!");
+            } else {
+                twiml.message("not sure what you wanted to do");
+            }
+            
+        }
+      } else if (message[0] === 'work' && message.length > 1 && message[1]) {
+        const id = await getCurrentWorkItem(base, phoneNumber)
+        if (id) {
+            const user = await getCurrentUser(base, phoneNumber)
+            const result = await updateWork(base, id, message[1])
+            const result2 = await addWorkItem(base, phoneNumber, user)
+            if (result && result2) {
+                twiml.message("succesfully added work");
+            } else {
+                twiml.message("error while adding work");
+            }
+        } else {
+            twiml.message("no work to add to!");
         }
 
       } else {
@@ -62,6 +93,21 @@ Pay Cycle: ${hours.payCycleHours.toFixed(2)}`)
     });
   }
 
+  async function addWorkItem(base: Airtable.Base, phoneNumber: string, user: string): Promise<string> {
+    return base('Work').create([
+        {
+          "fields": {
+            "Phone Number": phoneNumber,
+            "User": user
+          }
+        }
+    ]).then(record =>{
+        return record[0].id
+    }).catch(err => {
+        throw Error("unable to create record")
+    });
+  }
+
 
   async function getCurrentPunch(base: Airtable.Base, phoneNumber: string): Promise<string> {
     let found = false
@@ -70,6 +116,28 @@ Pay Cycle: ${hours.payCycleHours.toFixed(2)}`)
     return base('Timesheet').select({
         view: 'Grid view',
         filterByFormula: `AND(({Phone Number} = '${phoneNumber}'),({Punch Out} = ''))`
+    }).firstPage().then(records => {
+        for (const record of records) {
+            found = true
+            id = record.id
+        }
+        return id
+    }).catch(err => {
+        throw Error("unable to get record")
+    }).finally(() => {
+        if (!found) {
+            return undefined
+        }
+    })
+}
+
+async function getCurrentWorkItem(base: Airtable.Base, phoneNumber: string): Promise<string> {
+    let found = false
+    let id = ''
+
+    return base('Work').select({
+        view: 'Grid view',
+        filterByFormula: `AND(({Phone Number} = '${phoneNumber}'),({Order Number} = ''))`
     }).firstPage().then(records => {
         for (const record of records) {
             found = true
@@ -153,6 +221,24 @@ async function updateCurrentPunch(base: Airtable.Base, id: string): Promise<stri
         "Punch Out": "out"
     }).then(record =>{
         return record.id
+    }).catch(err => {
+        throw Error("unable to update record")
+    })
+}
+
+async function updateWork(base: Airtable.Base, id: string, workItem: string): Promise<string> {
+    return base('Timesheet').update(id, {
+        "Order Number": workItem
+    }).then(record =>{
+        return record.id
+    }).catch(err => {
+        throw Error("unable to update record")
+    })
+}
+
+async function deleteWork(base: Airtable.Base, id: string): Promise<boolean> {
+    return base('Timesheet').destroy(id).then(record =>{
+        return true
     }).catch(err => {
         throw Error("unable to update record")
     })
